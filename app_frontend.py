@@ -75,6 +75,96 @@ slope_df["Error"] = slope_df["Porcentaje_Victorias"] - slope_df["Porcentaje_Vict
 slope_equipos = sorted(slope_df["Nombre_Equipo"].unique().tolist())
 slope_norm_a_nombre = {normalizar(e): e for e in slope_equipos}
 
+# ---- 4. Salario (Pearson, FactSalario) ----
+salario_df = pd.read_csv("Salario.csv", sep=";", decimal=",", header=None,
+    names=["Id_Jugador", "Nombre_Completo", "Anio", "Indice_Eficiencia_Salarial",
+           "Salario_Anual", "Edad_Jugador", "Anios_Experiencia"], encoding="utf-8-sig")
+salario_df = salario_df.sort_values(["Id_Jugador", "Anio"])
+salario_df["Temporada_Numero"] = salario_df.groupby("Id_Jugador").cumcount() + 1
+
+_id_a_nombre_salario = salario_df.drop_duplicates("Id_Jugador").set_index("Id_Jugador")["Nombre_Completo"]
+_dup_salario = _id_a_nombre_salario[_id_a_nombre_salario.duplicated(keep=False)]
+salario_display = {
+    idj: (f"{nom} (ID {idj})" if idj in _dup_salario.index else nom)
+    for idj, nom in _id_a_nombre_salario.items()
+}
+
+salario_pivot = salario_df.pivot_table(index="Id_Jugador", columns="Temporada_Numero",
+                                        values="Indice_Eficiencia_Salarial")
+salario_corr = salario_pivot.T.corr(min_periods=5)
+
+salario_lista = sorted(salario_display.items(), key=lambda x: x[1])  # [(id, nombre_mostrado), ...]
+salario_norm_a_id = {normalizar(nom): idj for idj, nom in salario_display.items()}
+
+# ---- 5. Defensivo (Pearson, FactRendimientoDefensivo) ----
+defensivo_df = pd.read_csv("Defensivo.csv", sep=";", decimal=",", header=None,
+    names=["Id_Jugador", "Nombre_Completo", "Anio", "Porcentaje_Fildeo",
+           "Posicion_Principal", "Jugadas_Totales"], encoding="utf-8-sig")
+defensivo_df = defensivo_df.sort_values(["Id_Jugador", "Anio"])
+defensivo_df["Temporada_Numero"] = defensivo_df.groupby("Id_Jugador").cumcount() + 1
+
+_id_a_nombre_defensivo = defensivo_df.drop_duplicates("Id_Jugador").set_index("Id_Jugador")["Nombre_Completo"]
+_dup_defensivo = _id_a_nombre_defensivo[_id_a_nombre_defensivo.duplicated(keep=False)]
+defensivo_display = {
+    idj: (f"{nom} (ID {idj})" if idj in _dup_defensivo.index else nom)
+    for idj, nom in _id_a_nombre_defensivo.items()
+}
+
+defensivo_pivot = defensivo_df.pivot_table(index="Id_Jugador", columns="Temporada_Numero",
+                                            values="Porcentaje_Fildeo")
+defensivo_corr = defensivo_pivot.T.corr(min_periods=8)
+
+defensivo_lista = sorted(defensivo_display.items(), key=lambda x: x[1])
+defensivo_norm_a_id = {normalizar(nom): idj for idj, nom in defensivo_display.items()}
+
+_posicion_principal_defensivo = (
+    defensivo_df.sort_values("Jugadas_Totales", ascending=False)
+    .drop_duplicates("Id_Jugador")
+    .set_index("Id_Jugador")["Posicion_Principal"]
+)
+
+# ---- 6. Defensivo Postemporada (Slope One, FactRendimientoDefensivo x FactRendimientoDefensivoPostemporada) ----
+defpost_df = pd.read_csv("DefensivoPostemporada.csv", sep=";", decimal=",", header=None,
+    names=["Id_Jugador", "Nombre_Completo", "Porcentaje_Fildeo_Regular",
+           "Porcentaje_Fildeo_Postemporada"], encoding="utf-8-sig")
+_b_defpost = float((defpost_df["Porcentaje_Fildeo_Postemporada"] - defpost_df["Porcentaje_Fildeo_Regular"]).mean())
+defpost_df["Porcentaje_Fildeo_Postemporada_Predicho"] = defpost_df["Porcentaje_Fildeo_Regular"] + _b_defpost
+defpost_df["Error"] = defpost_df["Porcentaje_Fildeo_Postemporada"] - defpost_df["Porcentaje_Fildeo_Postemporada_Predicho"]
+
+_dup_defpost = defpost_df["Nombre_Completo"][defpost_df["Nombre_Completo"].duplicated(keep=False)].unique()
+defpost_df["Nombre_Mostrado"] = defpost_df.apply(
+    lambda r: f'{r["Nombre_Completo"]} (ID {r["Id_Jugador"]})' if r["Nombre_Completo"] in _dup_defpost else r["Nombre_Completo"],
+    axis=1,
+)
+defpost_lista = sorted(defpost_df["Nombre_Mostrado"].tolist())
+defpost_norm_a_nombre = {normalizar(n): n for n in defpost_lista}
+
+# ---- 7. Reconocimiento (Coseno, FactReconocimiento) ----
+reconocimiento_df = pd.read_csv("Reconocimiento.csv", sep=";", decimal=",", header=None,
+    names=["Id_Jugador", "Nombre_Completo", "Tipo_Reconocimiento", "Cantidad",
+           "Total_Reconocimientos"], encoding="utf-8-sig")
+
+reconocimiento_matriz = reconocimiento_df.pivot_table(
+    index=["Id_Jugador", "Nombre_Completo"], columns="Tipo_Reconocimiento",
+    values="Cantidad", aggfunc="sum", fill_value=0,
+)
+_reconocimiento_X = StandardScaler().fit_transform(reconocimiento_matriz.values)
+reconocimiento_sim = cosine_similarity(_reconocimiento_X)
+np.fill_diagonal(reconocimiento_sim, -1)
+
+_dup_reconocimiento = reconocimiento_matriz.index.get_level_values("Nombre_Completo")
+_dup_reconocimiento = pd.Series(_dup_reconocimiento)[pd.Series(_dup_reconocimiento).duplicated(keep=False)].unique()
+reconocimiento_nombres = [
+    f"{nom} (ID {idj})" if nom in _dup_reconocimiento else nom
+    for idj, nom in reconocimiento_matriz.index
+]
+reconocimiento_lista = sorted(reconocimiento_nombres)
+reconocimiento_norm_a_idx = {normalizar(n): i for i, n in enumerate(reconocimiento_nombres)}
+reconocimiento_tipos_por_jugador = {
+    i: reconocimiento_matriz.iloc[i][reconocimiento_matriz.iloc[i] > 0].to_dict()
+    for i in range(len(reconocimiento_matriz))
+}
+
 
 def buscar(texto, norm_a_clave, opciones_mostradas):
     """Busca por coincidencia exacta (normalizada) y, si no hay,
@@ -160,6 +250,10 @@ def pagina(contenido, activo=""):
           {link("/pearson", "1. Pearson", "pearson")}
           {link("/coseno", "2. Coseno", "coseno")}
           {link("/slopeone", "3. Slope One", "slopeone")}
+          {link("/salario", "4. Salario (Pearson)", "salario")}
+          {link("/defensivo", "5. Defensivo (Pearson)", "defensivo")}
+          {link("/defensivo_postemporada", "6. Defensivo Post. (Slope One)", "defpost")}
+          {link("/reconocimiento", "7. Reconocimiento (Coseno)", "reconocimiento")}
         </nav>
       </header>
       {contenido}
@@ -200,6 +294,10 @@ def home():
             <li><b>Pearson</b> &mdash; FactRendimientoOfensivo: correlacion de trayectoria de carrera (OPS por temporada).</li>
             <li><b>Coseno</b> &mdash; FactRendimientoOfensivoPostemporada: similitud de perfil ofensivo en playoffs.</li>
             <li><b>Slope One</b> &mdash; FactResultadoEquipo: prediccion de % de victorias a partir del salario relativo.</li>
+            <li><b>Salario (Pearson)</b> &mdash; FactSalario: correlacion de trayectoria de eficiencia salarial (metodo del sistema 1, reutilizado).</li>
+            <li><b>Defensivo (Pearson)</b> &mdash; FactRendimientoDefensivo: correlacion de trayectoria de porcentaje de fildeo (metodo del sistema 1, reutilizado).</li>
+            <li><b>Defensivo Postemporada (Slope One)</b> &mdash; FactRendimientoDefensivo + FactRendimientoDefensivoPostemporada: prediccion del fildeo en playoffs a partir del fildeo regular (metodo del sistema 3, reutilizado).</li>
+            <li><b>Reconocimiento (Coseno)</b> &mdash; FactReconocimiento: similitud de perfil de premios y selecciones All-Star acumulados en la carrera (metodo del sistema 2, reutilizado).</li>
           </ul>
         </div>
     """, "inicio")
@@ -311,6 +409,150 @@ def slopeone():
         </div>
         <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un equipo y presiona Buscar.</p>"}</div>
     """, "slopeone")
+
+
+@app.route("/salario")
+def salario():
+    jugador = request.args.get("jugador", "").strip()
+    resultado_html = ""
+    if jugador:
+        idj, sugerencias = buscar(jugador, salario_norm_a_id, [n for _, n in salario_lista])
+        if idj is not None:
+            nombre_mostrado = salario_display[idj]
+            correlaciones = salario_corr[idj].drop(idj).dropna().sort_values(ascending=False).head(5)
+            filas = [(salario_display[j], v) for j, v in correlaciones.items()]
+            if filas:
+                resultado_html = f"<h3>Top {len(filas)} comparables a {nombre_mostrado} (eficiencia salarial)</h3>" + tabla_recomendaciones(filas, "Jugador", "Correlacion Pearson")
+            else:
+                resultado_html = f'<p class="aviso">{nombre_mostrado} no tiene suficientes temporadas en comun (minimo 5) con otro jugador para calcular la correlacion.</p>'
+        else:
+            resultado_html = caja_sugerencias(sugerencias, "/salario", "jugador")
+
+    opciones = "".join(f"<option value='{n}'>" for _, n in salario_lista)
+    return pagina(f"""
+        <div class="tarjeta">
+          <h2>Sistema 4 &mdash; Salario (Pearson)</h2>
+          <p class="subtitulo">FactSalario + DimJugador + DimTiempo: correlacion de trayectoria del Indice_Eficiencia_Salarial por temporada de carrera (minimo 5 temporadas en comun). Reutiliza el metodo de Pearson del sistema 1: en vez de comparar OPS, compara la forma en que evoluciona la eficiencia salarial de un jugador a lo largo de su carrera.</p>
+          <form method="get">
+              <input list="lista-salario" name="jugador" placeholder="Escribe un jugador... (ej. Alex Rodriguez)" value="{jugador}">
+              <datalist id="lista-salario">{opciones}</datalist>
+              <button type="submit">Buscar</button>
+          </form>
+        </div>
+        <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un nombre y presiona Buscar.</p>"}</div>
+    """, "salario")
+
+
+@app.route("/defensivo")
+def defensivo():
+    jugador = request.args.get("jugador", "").strip()
+    resultado_html = ""
+    if jugador:
+        idj, sugerencias = buscar(jugador, defensivo_norm_a_id, [n for _, n in defensivo_lista])
+        if idj is not None:
+            nombre_mostrado = defensivo_display[idj]
+            correlaciones = defensivo_corr[idj].drop(idj).dropna().sort_values(ascending=False).head(5)
+            filas = [(defensivo_display[j], v) for j, v in correlaciones.items()]
+            posicion = _posicion_principal_defensivo.get(idj, "?")
+            if filas:
+                resultado_html = f"<h3>Top {len(filas)} comparables a {nombre_mostrado} <span class='badge'>{posicion}</span></h3>" + tabla_recomendaciones(filas, "Jugador", "Correlacion Pearson")
+            else:
+                resultado_html = f'<p class="aviso">{nombre_mostrado} no tiene suficientes temporadas en comun (minimo 8) con otro jugador para calcular la correlacion.</p>'
+        else:
+            resultado_html = caja_sugerencias(sugerencias, "/defensivo", "jugador")
+
+    opciones = "".join(f"<option value='{n}'>" for _, n in defensivo_lista)
+    return pagina(f"""
+        <div class="tarjeta">
+          <h2>Sistema 5 &mdash; Defensivo (Pearson)</h2>
+          <p class="subtitulo">FactRendimientoDefensivo + DimJugador + DimTiempo + DimPosicion: correlacion de trayectoria del porcentaje de fildeo por temporada de carrera (minimo 8 temporadas en comun).</p>
+          <form method="get">
+              <input list="lista-defensivo" name="jugador" placeholder="Escribe un jugador... (ej. Ozzie Smith)" value="{jugador}">
+              <datalist id="lista-defensivo">{opciones}</datalist>
+              <button type="submit">Buscar</button>
+          </form>
+        </div>
+        <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un nombre y presiona Buscar.</p>"}</div>
+    """, "defensivo")
+
+
+@app.route("/defensivo_postemporada")
+def defensivo_postemporada():
+    jugador = request.args.get("jugador", "").strip()
+    resultado_html = ""
+    if jugador:
+        nombre_real, sugerencias = buscar(jugador, defpost_norm_a_nombre, defpost_lista)
+        if nombre_real is not None:
+            fila = defpost_df[defpost_df["Nombre_Mostrado"] == nombre_real].iloc[0]
+            signo = "mejora" if fila.Error > 0 else ("empeora" if fila.Error < 0 else "sin cambio")
+            resultado_html = f"""
+            <h3>{nombre_real} &mdash; fildeo regular vs. postemporada (b = {_b_defpost:+.4f})</h3>
+            <table>
+              <tr><th>% Fildeo Regular</th><th>% Fildeo Postemporada</th><th>Predicho</th><th>Error</th><th>Efecto</th></tr>
+              <tr>
+                <td>{fila.Porcentaje_Fildeo_Regular*100:.2f}%</td>
+                <td>{fila.Porcentaje_Fildeo_Postemporada*100:.2f}%</td>
+                <td>{fila.Porcentaje_Fildeo_Postemporada_Predicho*100:.2f}%</td>
+                <td>{fila.Error:+.4f}</td>
+                <td><span class="badge">{signo}</span></td>
+              </tr>
+            </table>
+            """
+        else:
+            resultado_html = caja_sugerencias(sugerencias, "/defensivo_postemporada", "jugador")
+
+    opciones = "".join(f"<option value='{n}'>" for n in defpost_lista)
+    return pagina(f"""
+        <div class="tarjeta">
+          <h2>Sistema 6 &mdash; Defensivo Postemporada (Slope One)</h2>
+          <p class="subtitulo">FactRendimientoDefensivo x FactRendimientoDefensivoPostemporada (drill-across): f(x) = x + b, prediciendo el % de fildeo en playoffs a partir del % de fildeo en temporada regular del mismo jugador.</p>
+          <form method="get">
+              <input list="lista-defpost" name="jugador" placeholder="Escribe un jugador... (ej. Derek Jeter)" value="{jugador}">
+              <datalist id="lista-defpost">{opciones}</datalist>
+              <button type="submit">Buscar</button>
+          </form>
+        </div>
+        <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un jugador y presiona Buscar.</p>"}</div>
+    """, "defpost")
+
+
+@app.route("/reconocimiento")
+def reconocimiento():
+    jugador = request.args.get("jugador", "").strip()
+    resultado_html = ""
+    if jugador:
+        idx, sugerencias = buscar(jugador, reconocimiento_norm_a_idx, reconocimiento_lista)
+        if idx is not None:
+            nombre_mostrado = reconocimiento_nombres[idx]
+            sims = reconocimiento_sim[idx]
+            top_idx = np.argsort(sims)[::-1][:5]
+            filas = [(reconocimiento_nombres[j], sims[j]) for j in top_idx]
+            perfil = reconocimiento_tipos_por_jugador[idx]
+            perfil_html = "".join(f"<li>{k}: {int(v)}</li>" for k, v in sorted(perfil.items(), key=lambda kv: -kv[1]))
+            if not perfil_html:
+                perfil_html = "<li>Sin reconocimientos frecuentes registrados</li>"
+            resultado_html = f"""
+            <h3>Perfil de reconocimientos de {nombre_mostrado}</h3>
+            <ul class="perfil">{perfil_html}</ul>
+            <h3>Top 5 comparables</h3>
+            {tabla_recomendaciones(filas, "Jugador", "Similitud Coseno")}
+            """
+        else:
+            resultado_html = caja_sugerencias(sugerencias, "/reconocimiento", "jugador")
+
+    opciones = "".join(f"<option value='{n}'>" for n in reconocimiento_lista)
+    return pagina(f"""
+        <div class="tarjeta">
+          <h2>Sistema 7 &mdash; Reconocimiento (Coseno)</h2>
+          <p class="subtitulo">FactReconocimiento + DimJugador + DimTiempo + DimTipoReconocimiento: perfil de tipos de reconocimiento (premios, All-Star) acumulados en toda la carrera, estandarizado (Z-score).</p>
+          <form method="get">
+              <input list="lista-reconocimiento" name="jugador" placeholder="Escribe un jugador... (ej. Cal Ripken)" value="{jugador}">
+              <datalist id="lista-reconocimiento">{opciones}</datalist>
+              <button type="submit">Buscar</button>
+          </form>
+        </div>
+        <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un nombre y presiona Buscar.</p>"}</div>
+    """, "reconocimiento")
 
 
 if __name__ == "__main__":
