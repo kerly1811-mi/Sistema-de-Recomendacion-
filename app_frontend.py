@@ -281,7 +281,7 @@ def pagina(contenido, activo=""):
     <body>
       <header>
         <h1>Sistemas de Recomendación </h1>
-        <p>Cada pagina lee su CSV real y calcula la recomendacion en Python al vuelo.</p>
+        
         <nav>
           {link("/", "Inicio", "inicio")}
           {link("/pearson", "1. Rend. Ofensivo", "pearson")}
