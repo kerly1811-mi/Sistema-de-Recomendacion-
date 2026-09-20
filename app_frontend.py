@@ -179,8 +179,22 @@ def buscar(texto, norm_a_clave, opciones_mostradas):
 
 
 # ============================================================
-# PLANTILLA HTML (estilo simple pero cuidado, sin librerias externas)
+# PLANTILLA HTML (estilo cuidado, sin librerias externas)
 # ============================================================
+
+# Cada sistema pertenece a una familia de metodo (para el color del tag y
+# del borde de la tarjeta en el inicio).
+METODOS = {
+    "pearson":  {"color": "#1a56b0", "fondo": "#e8f0fe", "nombre": "Pearson"},
+    "coseno":   {"color": "#6b21a8", "fondo": "#f3e8fd", "nombre": "Coseno"},
+    "slopeone": {"color": "#0f7a4a", "fondo": "#e6f7ee", "nombre": "Slope One"},
+}
+
+
+def tag_metodo(metodo):
+    m = METODOS[metodo]
+    return f'<span class="tag" style="color:{m["color"]};background:{m["fondo"]}">{m["nombre"]}</span>'
+
 
 def pagina(contenido, activo=""):
     def link(href, texto, clave):
@@ -191,44 +205,48 @@ def pagina(contenido, activo=""):
     <html>
     <head>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>Sistemas de Recomendacion - Lahman</title>
       <style>
         * {{ box-sizing: border-box; }}
         body {{
           font-family: 'Segoe UI', Arial, sans-serif;
-          max-width: 880px; margin: 0 auto; padding: 0 20px 50px;
+          max-width: 960px; margin: 0 auto; padding: 0 20px 50px;
           background: #f4f6f9; color: #1c2530;
         }}
         header {{
-          background: #16324f; color: white; margin: 0 -20px 25px; padding: 22px 20px;
+          background: linear-gradient(135deg, #16324f, #1d4a73);
+          color: white; margin: 0 -20px 25px; padding: 22px 20px 16px;
         }}
         header h1 {{ margin: 0 0 4px; font-size: 20px; }}
         header p {{ margin: 0; opacity: .85; font-size: 13px; }}
-        nav {{ margin-top: 14px; }}
+        nav {{ margin-top: 14px; display: flex; flex-wrap: wrap; gap: 4px 4px; }}
         nav a {{
-          color: #cfe0f2; text-decoration: none; margin-right: 18px; font-size: 14px;
-          padding-bottom: 4px; border-bottom: 2px solid transparent;
+          color: #cfe0f2; text-decoration: none; font-size: 12.8px;
+          padding: 5px 10px; border-radius: 14px; border: 1px solid transparent;
         }}
-        nav a.activo, nav a:hover {{ color: white; border-bottom-color: #4da3ff; }}
-        h2 {{ font-size: 19px; margin-bottom: 4px; }}
+        nav a.activo {{ background: rgba(255,255,255,.14); color: white; border-color: rgba(255,255,255,.25); }}
+        nav a:hover {{ background: rgba(255,255,255,.09); color: white; }}
+        h2 {{ font-size: 19px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
         .subtitulo {{ color: #55606e; font-size: 13.5px; margin-top: 0; }}
         .tarjeta {{
-          background: white; border: 1px solid #e1e6ec; border-radius: 8px;
-          padding: 18px 20px; margin: 16px 0; box-shadow: 0 1px 2px rgba(0,0,0,.03);
+          background: white; border: 1px solid #e1e6ec; border-radius: 10px;
+          padding: 18px 20px; margin: 16px 0; box-shadow: 0 1px 3px rgba(20,30,50,.05);
         }}
         form {{ display: flex; gap: 8px; margin: 4px 0 0; }}
         input {{
           flex: 1; padding: 9px 12px; font-size: 14px;
           border: 1px solid #c7d0da; border-radius: 6px;
         }}
+        input:focus {{ outline: none; border-color: #1f6feb; box-shadow: 0 0 0 3px rgba(31,111,235,.15); }}
         button {{
           padding: 9px 18px; font-size: 14px; border: none; border-radius: 6px;
-          background: #1f6feb; color: white; cursor: pointer;
+          background: #1f6feb; color: white; cursor: pointer; font-weight: 600;
         }}
         button:hover {{ background: #185ec4; }}
         table {{ border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 13.5px; }}
         td, th {{ border-bottom: 1px solid #e6eaef; padding: 8px 10px; text-align: left; }}
-        th {{ background: #eef2f7; color: #33404d; font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }}
+        th {{ background: #eef2f7; color: #33404d; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }}
         tr:hover td {{ background: #f7fafd; }}
         .aviso {{ background: #fff6e5; border: 1px solid #f0d999; color: #7a5b00; padding: 10px 14px; border-radius: 6px; font-size: 13.5px; }}
         .error {{ background: #fdeaea; border: 1px solid #f0b8b8; color: #8a1f1f; padding: 10px 14px; border-radius: 6px; font-size: 13.5px; }}
@@ -238,22 +256,41 @@ def pagina(contenido, activo=""):
         .perfil {{ display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; margin: 8px 0 0; }}
         .perfil li {{ background: #eef2f7; padding: 6px 12px; border-radius: 6px; font-size: 12.5px; }}
         .badge {{ display: inline-block; background: #eaf3ff; color: #1656a3; padding: 2px 8px; border-radius: 10px; font-weight: 600; }}
+        .tag {{ display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: .04em; padding: 3px 10px; border-radius: 12px; }}
+
+        .grid-inicio {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 14px; }}
+        .card-sistema {{
+          display: block; background: white; border: 1px solid #e1e6ec; border-left: 4px solid #c7d0da;
+          border-radius: 8px; padding: 14px 16px; text-decoration: none; color: inherit;
+          transition: transform .12s ease, box-shadow .12s ease;
+        }}
+        .card-sistema:hover {{ transform: translateY(-2px); box-shadow: 0 4px 10px rgba(20,30,50,.08); }}
+        .card-sistema .num {{ font-size: 11px; color: #8b95a1; font-weight: 700; }}
+        .card-sistema .titulo {{ font-size: 14.5px; font-weight: 600; margin: 3px 0 6px; }}
+        .card-sistema .desc {{ font-size: 12.5px; color: #5b6674; line-height: 1.4; }}
+
         footer {{ color: #8b95a1; font-size: 11.5px; margin-top: 30px; }}
+
+        @media (max-width: 560px) {{
+          form {{ flex-direction: column; }}
+          button {{ width: 100%; }}
+        }}
       </style>
     </head>
     <body>
       <header>
-        <h1>Sistemas de Recomendacion</h1>
-        
+        <h1>Sistemas de Recomendación </h1>
+        <p>Cada pagina lee su CSV real y calcula la recomendacion en Python al vuelo.</p>
         <nav>
           {link("/", "Inicio", "inicio")}
-          {link("/pearson", "1. Pearson", "pearson")}
-          {link("/coseno", "2. Coseno", "coseno")}
-          {link("/slopeone", "3. Slope One", "slopeone")}
-          {link("/salario", "4. Salario (Pearson)", "salario")}
-          {link("/defensivo", "5. Defensivo (Pearson)", "defensivo")}
-          {link("/defensivo_postemporada", "6. Defensivo Post. (Slope One)", "defpost")}
-          {link("/reconocimiento", "7. Reconocimiento (Coseno)", "reconocimiento")}
+          {link("/pearson", "1. Rend. Ofensivo", "pearson")}
+          {link("/coseno", "2. Rend. Ofensivo Post.", "coseno")}
+          {link("/slopeone", "3. Resultado Equipo", "slopeone")}
+          {link("/salario", "4. Salario", "salario")}
+          {link("/defensivo", "5. Defensivo", "defensivo")}
+          {link("/defensivo_postemporada", "6. Defensivo Post.", "defpost")}
+          {link("/reconocimiento", "7. Reconocimiento", "reconocimiento")}
         </nav>
       </header>
       {contenido}
@@ -284,21 +321,41 @@ def caja_sugerencias(sugerencias, ruta, parametro):
     links = "".join(f'<a href="{ruta}?{parametro}={s}">{s}</a>' for s in sugerencias)
     return f'<p>Quizas quisiste decir:</p><div class="sugerencias">{links}</div>'
 
+
+def tarjeta_inicio(href, numero, metodo, titulo, desc):
+    m = METODOS[metodo]
+    return f"""
+    <a class="card-sistema" href="{href}" style="border-left-color:{m['color']}">
+      <div class="num">SISTEMA {numero} &middot; {m['nombre'].upper()}</div>
+      <div class="titulo">{titulo}</div>
+      <div class="desc">{desc}</div>
+    </a>
+    """
+
+
 @app.route("/")
 def home():
-    return pagina("""
+    tarjetas = "".join([
+        tarjeta_inicio("/pearson", 1, "pearson", "Rendimiento Ofensivo",
+            "FactRendimientoOfensivo: correlacion de trayectoria de carrera (OPS por temporada)."),
+        tarjeta_inicio("/coseno", 2, "coseno", "Rendimiento Ofensivo Postemporada",
+            "FactRendimientoOfensivoPostemporada: similitud de perfil ofensivo en playoffs."),
+        tarjeta_inicio("/slopeone", 3, "slopeone", "Resultado de Equipo",
+            "FactResultadoEquipo: prediccion de % de victorias a partir del salario relativo."),
+        tarjeta_inicio("/salario", 4, "pearson", "Salario",
+            "FactSalario: correlacion de trayectoria de eficiencia salarial."),
+        tarjeta_inicio("/defensivo", 5, "pearson", "Defensivo",
+            "FactRendimientoDefensivo: correlacion de trayectoria de porcentaje de fildeo."),
+        tarjeta_inicio("/defensivo_postemporada", 6, "slopeone", "Defensivo Postemporada",
+            "FactRendimientoDefensivo x FactRendimientoDefensivoPostemporada: prediccion del fildeo en playoffs."),
+        tarjeta_inicio("/reconocimiento", 7, "coseno", "Reconocimiento",
+            "FactReconocimiento: similitud de perfil de premios y selecciones All-Star acumulados."),
+    ])
+    return pagina(f"""
         <div class="tarjeta">
           <h2>Bienvenida</h2>
-          <p class="subtitulo">Elige un sistema en el menu de arriba. Ninguno usa datos precalculados: cada busqueda corre el algoritmo sobre el CSV completo.</p>
-          <ul>
-            <li><b>Pearson</b> &mdash; FactRendimientoOfensivo: correlacion de trayectoria de carrera (OPS por temporada).</li>
-            <li><b>Coseno</b> &mdash; FactRendimientoOfensivoPostemporada: similitud de perfil ofensivo en playoffs.</li>
-            <li><b>Slope One</b> &mdash; FactResultadoEquipo: prediccion de % de victorias a partir del salario relativo.</li>
-            <li><b>Salario (Pearson)</b> &mdash; FactSalario: correlacion de trayectoria de eficiencia salarial (metodo del sistema 1, reutilizado).</li>
-            <li><b>Defensivo (Pearson)</b> &mdash; FactRendimientoDefensivo: correlacion de trayectoria de porcentaje de fildeo (metodo del sistema 1, reutilizado).</li>
-            <li><b>Defensivo Postemporada (Slope One)</b> &mdash; FactRendimientoDefensivo + FactRendimientoDefensivoPostemporada: prediccion del fildeo en playoffs a partir del fildeo regular (metodo del sistema 3, reutilizado).</li>
-            <li><b>Reconocimiento (Coseno)</b> &mdash; FactReconocimiento: similitud de perfil de premios y selecciones All-Star acumulados en la carrera (metodo del sistema 2, reutilizado).</li>
-          </ul>
+          <p class="subtitulo">Elige un sistema. Ninguno usa datos precalculados: cada busqueda corre el algoritmo sobre el CSV completo, en el momento.</p>
+          <div class="grid-inicio">{tarjetas}</div>
         </div>
     """, "inicio")
 
@@ -323,7 +380,7 @@ def pearson():
     opciones = "".join(f"<option value='{n}'>" for _, n in pearson_lista)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 1 &mdash; Pearson</h2>
+          <h2>Sistema 1 &mdash; Rendimiento Ofensivo {tag_metodo("pearson")}</h2>
           <p class="subtitulo">FactRendimientoOfensivo: correlacion de trayectoria de OPS por temporada de carrera (minimo 8 temporadas en comun).</p>
           <form method="get">
               <input list="lista-pearson" name="jugador" placeholder="Escribe un jugador... (ej. Hank Aaron)" value="{jugador}">
@@ -360,7 +417,7 @@ def coseno():
     opciones = "".join(f"<option value='{n}'>" for n in coseno_lista)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 2 &mdash; Similitud Coseno</h2>
+          <h2>Sistema 2 &mdash; Rendimiento Ofensivo Postemporada {tag_metodo("coseno")}</h2>
           <p class="subtitulo">FactRendimientoOfensivoPostemporada: perfil de 6 atributos estandarizados (Z-score).</p>
           <form method="get">
               <input list="lista-coseno" name="jugador" placeholder="Escribe un jugador... (ej. Babe Ruth)" value="{jugador}">
@@ -399,7 +456,7 @@ def slopeone():
     opciones = "".join(f"<option value='{e}'>" for e in slope_equipos)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 3 &mdash; Slope One</h2>
+          <h2>Sistema 3 &mdash; Resultado de Equipo {tag_metodo("slopeone")}</h2>
           <p class="subtitulo">FactResultadoEquipo: f(x) = x + b, prediciendo % de victorias desde el percentil de salario.</p>
           <form method="get">
               <input list="lista-equipos" name="equipo" placeholder="Escribe un equipo... (ej. New York Yankees)" value="{equipo}">
@@ -431,7 +488,7 @@ def salario():
     opciones = "".join(f"<option value='{n}'>" for _, n in salario_lista)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 4 &mdash; Salario (Pearson)</h2>
+          <h2>Sistema 4 &mdash; Salario {tag_metodo("pearson")}</h2>
           <p class="subtitulo">FactSalario + DimJugador + DimTiempo: correlacion de trayectoria del Indice_Eficiencia_Salarial por temporada de carrera (minimo 5 temporadas en comun). Reutiliza el metodo de Pearson del sistema 1: en vez de comparar OPS, compara la forma en que evoluciona la eficiencia salarial de un jugador a lo largo de su carrera.</p>
           <form method="get">
               <input list="lista-salario" name="jugador" placeholder="Escribe un jugador... (ej. Alex Rodriguez)" value="{jugador}">
@@ -464,7 +521,7 @@ def defensivo():
     opciones = "".join(f"<option value='{n}'>" for _, n in defensivo_lista)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 5 &mdash; Defensivo (Pearson)</h2>
+          <h2>Sistema 5 &mdash; Defensivo {tag_metodo("pearson")}</h2>
           <p class="subtitulo">FactRendimientoDefensivo + DimJugador + DimTiempo + DimPosicion: correlacion de trayectoria del porcentaje de fildeo por temporada de carrera (minimo 8 temporadas en comun).</p>
           <form method="get">
               <input list="lista-defensivo" name="jugador" placeholder="Escribe un jugador... (ej. Ozzie Smith)" value="{jugador}">
@@ -504,7 +561,7 @@ def defensivo_postemporada():
     opciones = "".join(f"<option value='{n}'>" for n in defpost_lista)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 6 &mdash; Defensivo Postemporada (Slope One)</h2>
+          <h2>Sistema 6 &mdash; Defensivo Postemporada {tag_metodo("slopeone")}</h2>
           <p class="subtitulo">FactRendimientoDefensivo x FactRendimientoDefensivoPostemporada (drill-across): f(x) = x + b, prediciendo el % de fildeo en playoffs a partir del % de fildeo en temporada regular del mismo jugador.</p>
           <form method="get">
               <input list="lista-defpost" name="jugador" placeholder="Escribe un jugador... (ej. Derek Jeter)" value="{jugador}">
@@ -543,7 +600,7 @@ def reconocimiento():
     opciones = "".join(f"<option value='{n}'>" for n in reconocimiento_lista)
     return pagina(f"""
         <div class="tarjeta">
-          <h2>Sistema 7 &mdash; Reconocimiento (Coseno)</h2>
+          <h2>Sistema 7 &mdash; Reconocimiento {tag_metodo("coseno")}</h2>
           <p class="subtitulo">FactReconocimiento + DimJugador + DimTiempo + DimTipoReconocimiento: perfil de tipos de reconocimiento (premios, All-Star) acumulados en toda la carrera, estandarizado (Z-score).</p>
           <form method="get">
               <input list="lista-reconocimiento" name="jugador" placeholder="Escribe un jugador... (ej. Cal Ripken)" value="{jugador}">
