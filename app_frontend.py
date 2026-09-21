@@ -166,6 +166,77 @@ reconocimiento_tipos_por_jugador = {
 }
 
 
+# ---- 8. Contenido (Recomendacion Basada en Contenido, FactRendimientoDefensivo) ----
+# A diferencia de los sistemas 1-7, aqui no se calcula ninguna correlacion
+# ni similitud coseno entre vectores numericos. Se construye, para cada
+# jugador, una ficha de atributos de contenido (Posicion_Principal,
+# Decada_Principal, Nivel_Fildeo) y se recomienda por coincidencia de
+# esas etiquetas, tal como un sistema de contenido recomienda peliculas
+# por genero/decada en vez de por el comportamiento de otros usuarios.
+contenido_base_df = pd.read_csv("Defensivo.csv", sep=";", decimal=",", header=None,
+    names=["Id_Jugador", "Nombre_Completo", "Anio", "Porcentaje_Fildeo",
+           "Posicion_Principal", "Jugadas_Totales"], encoding="utf-8-sig")
+contenido_base_df["Decada"] = (contenido_base_df["Anio"] // 10 * 10).astype(str) + "s"
+
+
+def _ficha_jugador(g):
+    return pd.Series({
+        "Posicion_Principal": g.loc[g["Jugadas_Totales"].idxmax(), "Posicion_Principal"],
+        "Decada_Principal": g.groupby("Decada")["Jugadas_Totales"].sum().idxmax(),
+        "Fildeo_Promedio_Carrera": np.average(g["Porcentaje_Fildeo"], weights=g["Jugadas_Totales"]),
+        "Jugadas_Totales_Carrera": g["Jugadas_Totales"].sum(),
+        "Temporadas_Jugadas": g["Anio"].nunique(),
+    })
+
+
+contenido_ficha = contenido_base_df.groupby(["Id_Jugador", "Nombre_Completo"]).apply(
+    _ficha_jugador, include_groups=False
+).reset_index()
+
+# Se descartan carreras demasiado cortas para describir un "estilo"
+# confiable (filtro de datos, igual que el minimo de temporadas de los
+# sistemas 1, 4 y 5).
+contenido_ficha = contenido_ficha[
+    (contenido_ficha["Temporadas_Jugadas"] >= 3) & (contenido_ficha["Jugadas_Totales_Carrera"] >= 300)
+].reset_index(drop=True)
+
+_niveles = ["Bajo", "Medio", "Alto", "Elite"]
+
+
+def _etiquetar_nivel(serie):
+    try:
+        return pd.qcut(serie, 4, labels=_niveles, duplicates="drop")
+    except ValueError:
+        return pd.Series(["Medio"] * len(serie), index=serie.index)
+
+
+contenido_ficha["Nivel_Fildeo"] = (
+    contenido_ficha.groupby("Posicion_Principal")["Fildeo_Promedio_Carrera"]
+    .transform(_etiquetar_nivel).astype(str)
+)
+
+_dup_contenido = contenido_ficha["Nombre_Completo"][contenido_ficha["Nombre_Completo"].duplicated(keep=False)].unique()
+contenido_ficha["Nombre_Mostrado"] = contenido_ficha.apply(
+    lambda r: f'{r["Nombre_Completo"]} (ID {r["Id_Jugador"]})' if r["Nombre_Completo"] in _dup_contenido else r["Nombre_Completo"],
+    axis=1,
+)
+contenido_lista = sorted(contenido_ficha["Nombre_Mostrado"].tolist())
+contenido_norm_a_idx = {normalizar(n): i for i, n in enumerate(contenido_ficha["Nombre_Mostrado"])}
+
+
+def recomendar_contenido(idx, top=5):
+    base = contenido_ficha.iloc[idx]
+    grupo = contenido_ficha[contenido_ficha["Posicion_Principal"] == base["Posicion_Principal"]]
+    grupo = grupo[grupo["Id_Jugador"] != base["Id_Jugador"]].copy()
+    coincidencias = (
+        (grupo["Decada_Principal"] == base["Decada_Principal"]).astype(int) +
+        (grupo["Nivel_Fildeo"] == base["Nivel_Fildeo"]).astype(int)
+    )
+    grupo["Puntaje_Contenido"] = (1 + coincidencias) / 3.0  # posicion (1) + hasta 2 etiquetas mas, sobre 3
+    grupo = grupo.sort_values(["Puntaje_Contenido", "Jugadas_Totales_Carrera"], ascending=[False, False])
+    return grupo.head(top)
+
+
 def buscar(texto, norm_a_clave, opciones_mostradas):
     """Busca por coincidencia exacta (normalizada) y, si no hay,
     devuelve sugerencias por coincidencia parcial (contiene el texto)."""
@@ -188,6 +259,7 @@ METODOS = {
     "pearson":  {"color": "#1a56b0", "fondo": "#e8f0fe", "nombre": "Pearson"},
     "coseno":   {"color": "#6b21a8", "fondo": "#f3e8fd", "nombre": "Coseno"},
     "slopeone": {"color": "#0f7a4a", "fondo": "#e6f7ee", "nombre": "Slope One"},
+    "contenido": {"color": "#b45309", "fondo": "#fef3e2", "nombre": "Contenido"},
 }
 
 
@@ -291,6 +363,7 @@ def pagina(contenido, activo=""):
           {link("/defensivo", "5. Defensivo", "defensivo")}
           {link("/defensivo_postemporada", "6. Defensivo Post.", "defpost")}
           {link("/reconocimiento", "7. Reconocimiento", "reconocimiento")}
+          {link("/contenido", "8. Contenido", "contenido")}
         </nav>
       </header>
       {contenido}
@@ -350,6 +423,8 @@ def home():
             "FactRendimientoDefensivo x FactRendimientoDefensivoPostemporada: prediccion del fildeo en playoffs."),
         tarjeta_inicio("/reconocimiento", 7, "coseno", "Reconocimiento",
             "FactReconocimiento: similitud de perfil de premios y selecciones All-Star acumulados."),
+        tarjeta_inicio("/contenido", 8, "contenido", "Recomendacion por Contenido",
+            "FactRendimientoDefensivo: recomendacion por posicion, decada y nivel de fildeo (sin correlacion ni coseno)."),
     ])
     return pagina(f"""
         <div class="tarjeta">
@@ -610,6 +685,51 @@ def reconocimiento():
         </div>
         <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un nombre y presiona Buscar.</p>"}</div>
     """, "reconocimiento")
+
+
+@app.route("/contenido")
+def contenido():
+    jugador = request.args.get("jugador", "").strip()
+    resultado_html = ""
+    if jugador:
+        idx, sugerencias = buscar(jugador, contenido_norm_a_idx, contenido_lista)
+        if idx is not None:
+            base = contenido_ficha.iloc[idx]
+            recomendados = recomendar_contenido(idx)
+            filas = [(r["Nombre_Mostrado"], r["Puntaje_Contenido"]) for _, r in recomendados.iterrows()]
+            ficha_html = f"""
+            <ul class="perfil">
+              <li>Posicion: {base['Posicion_Principal']}</li>
+              <li>Decada principal: {base['Decada_Principal']}</li>
+              <li>Nivel de fildeo: {base['Nivel_Fildeo']} (dentro de su posicion)</li>
+              <li>Fildeo promedio de carrera: {base['Fildeo_Promedio_Carrera']:.4f}</li>
+            </ul>
+            """
+            if filas:
+                resultado_html = f"""
+                <h3>Ficha de contenido de {base['Nombre_Mostrado']}</h3>
+                {ficha_html}
+                <h3>Top {len(filas)} comparables por contenido</h3>
+                {tabla_recomendaciones(filas, "Jugador", "Puntaje de Contenido")}
+                """
+            else:
+                resultado_html = f'<p class="aviso">No hay otros jugadores de la posicion {base["Posicion_Principal"]} con ficha de contenido suficiente para comparar.</p>'
+        else:
+            resultado_html = caja_sugerencias(sugerencias, "/contenido", "jugador")
+
+    opciones = "".join(f"<option value='{n}'>" for n in contenido_lista)
+    return pagina(f"""
+        <div class="tarjeta">
+          <h2>Sistema 8 &mdash; Recomendacion Basada en Contenido {tag_metodo("contenido")}</h2>
+          <p class="subtitulo">FactRendimientoDefensivo + DimPosicion + DimTiempo: a diferencia de los sistemas 1 a 7, aqui no se calcula correlacion de Pearson ni similitud coseno entre vectores numericos. Cada jugador recibe una ficha de contenido (Posicion_Principal, Decada_Principal y Nivel_Fildeo, este ultimo discretizado por cuartiles dentro de su propia posicion) y se recomienda a los jugadores que comparten mas etiquetas de esa ficha, igual que un sistema de contenido recomienda por genero o decada en vez de por comportamiento de otros usuarios. Se exige un minimo de 3 temporadas y 300 jugadas de carrera para construir la ficha.</p>
+          <form method="get">
+              <input list="lista-contenido" name="jugador" placeholder="Escribe un jugador... (ej. Ozzie Smith)" value="{jugador}">
+              <datalist id="lista-contenido">{opciones}</datalist>
+              <button type="submit">Buscar</button>
+          </form>
+        </div>
+        <div class="tarjeta">{resultado_html if resultado_html else "<p class='subtitulo'>Escribe un nombre y presiona Buscar.</p>"}</div>
+    """, "contenido")
 
 
 if __name__ == "__main__":
